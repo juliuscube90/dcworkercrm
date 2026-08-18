@@ -1,0 +1,29 @@
+import { type EmailOtpType } from "@supabase/supabase-js";
+import { type NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+// Handles the link a user clicks from the "confirm your email" message.
+// Supports both the PKCE `code` redirect (Supabase's default hosted verify
+// flow) and a direct `token_hash` + `type` link, in case the project's email
+// template is customized to skip the hosted verify hop.
+export async function GET(request: NextRequest) {
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get("code");
+  const token_hash = searchParams.get("token_hash");
+  const type = searchParams.get("type") as EmailOtpType | null;
+  const next = searchParams.get("next") ?? "/dashboard/pipeline";
+
+  const supabase = await createClient();
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) return NextResponse.redirect(`${origin}${next}`);
+  } else if (token_hash && type) {
+    const { error } = await supabase.auth.verifyOtp({ type, token_hash });
+    if (!error) return NextResponse.redirect(`${origin}${next}`);
+  }
+
+  return NextResponse.redirect(
+    `${origin}/login?error=confirmation_failed`
+  );
+}
